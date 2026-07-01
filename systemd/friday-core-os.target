@@ -1,0 +1,9 @@
+[Unit]
+Description=Friday Labs OS — Core Hub
+Documentation=https://github.com/Friday-Labs-Inc/friday-labs-os
+Requires=multi-user.target mosquitto-internal.service
+After=multi-user.target mosquitto-internal.service network-online.target
+Wants=network-online.target
+
+[Install]
+WantedBy=multi-user.target

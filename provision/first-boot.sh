@@ -108,9 +108,14 @@ install_ros2_jazzy() {
     fi
     apt-get install -y -qq software-properties-common curl gnupg
     add-apt-repository -y universe >/dev/null
-    if [ ! -f /usr/share/keyrings/ros-archive-keyring.gpg ]; then
-        curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-            -o /usr/share/keyrings/ros-archive-keyring.gpg
+    # -s (non-empty), not -f: a 0-byte leftover from a failed fetch must not trap re-runs.
+    if [ ! -s /usr/share/keyrings/ros-archive-keyring.gpg ]; then
+        # A rover lives on flaky links. -4 dodges intermittent IPv6 resolution;
+        # --retry rides out transient DNS/network blips instead of dying under set -e.
+        curl -4 -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+            -o /usr/share/keyrings/ros-archive-keyring.gpg \
+            || die "failed to fetch the ROS apt key (network?) — fix connectivity and re-run"
     fi
     local codename
     codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"

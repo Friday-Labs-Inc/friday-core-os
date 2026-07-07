@@ -29,8 +29,10 @@ die() { echo "[build-rover-code] ERROR: $*" >&2; exit 1; }
 
 # --- deps ------------------------------------------------------------------
 log "build dependencies"
+# build-essential + cmake: ros-base is minimal and ships no C++ toolchain, but
+# friday_msgs compiles generated message code (needs g++/cmake).
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    python3-colcon-common-extensions python3-rosdep git
+    build-essential cmake git python3-colcon-common-extensions python3-rosdep
 
 # --- clone / update ---------------------------------------------------------
 mkdir -p "$WS/src"
@@ -56,7 +58,7 @@ set +u
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 set -u
 rosdep install --from-paths "$WS/src/friday-labs-os/src" --ignore-src -y \
-    --rosdistro "$ROS_DISTRO" 2>/dev/null || log "rosdep install skipped (offline?)"
+    --rosdistro "$ROS_DISTRO" || log "rosdep install had issues (build may still proceed)"
 
 # --- build -------------------------------------------------------------------
 log "colcon build: $CORE_PACKAGES"

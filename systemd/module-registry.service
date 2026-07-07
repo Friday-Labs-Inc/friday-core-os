@@ -33,6 +33,9 @@ ExecStart=/opt/friday/bin/ros2-run friday_core_hub core_hub --ros-args -p author
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 Environment=ROS_LOCALHOST_ONLY=0
 Environment=ROS_DOMAIN_ID=42
+# ROS logs to ~/.ros by default, but ProtectHome=yes hides /home. Point ROS_HOME
+# at the service's writable state dir so rclpy logging can create its log dir.
+Environment=ROS_HOME=/var/lib/friday/ros
 
 User=friday
 Group=friday

@@ -37,13 +37,38 @@ ROS 2 + signing              signed CBOR          no ROS 2, pure gateway
 ESP32 Mobility                                   Command Center (EMQX)
 ```
 
+## Quick start (Phase A1)
+
+You have a Pi 4B with Ubuntu Server 24.04 LTS installed. To turn it into a
+Core Hub node, on the Pi:
+
+```bash
+sudo mkdir -p /opt/friday && sudo chown $USER:$USER /opt/friday
+cd /opt/friday && git clone https://github.com/Friday-Labs-Inc/friday-core-os.git
+cd friday-core-os
+
+# drop the Command-Center-issued WireGuard config into place
+# (see docs/bring-up-guide.md for how to get it)
+cp ~/mark1-core.conf provision/secrets/
+
+# provision (idempotent — safe to re-run)
+sudo bash provision/first-boot.sh
+sudo reboot
+
+# after reboot, verify
+sudo bash provision/verify.sh
+```
+
+**Follow [`docs/bring-up-guide.md`](docs/bring-up-guide.md)** end-to-end the first time.
+
 ## Directory layout
 
 ```
-systemd/          systemd target + service units
+docs/             bring-up guide, OS-level architecture
+systemd/          systemd target + service units + hardening drop-ins
 mosquitto/        internal MQTT broker config (Core ↔ Telemetry bridge)
-provision/        first-boot provisioning scripts
-image/            pi-gen / image build configuration
+provision/        first-boot provisioning scripts + verify.sh + secrets/ (gitignored)
+image/            pi-gen / RAUC / cloud-init image build configuration (Phase A2)
 ```
 
 ## Related repos

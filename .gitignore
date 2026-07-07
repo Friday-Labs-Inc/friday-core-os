@@ -1,0 +1,9 @@
+# Secrets — never commit rover credentials.
+provision/secrets/*
+!provision/secrets/README.md
+!provision/secrets/.gitkeep
+
+# Editor + OS junk
+.DS_Store
+*.swp
+*~

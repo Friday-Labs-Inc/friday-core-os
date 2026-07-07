@@ -128,6 +128,61 @@ Your new rover **MARK1-CORE-001** should appear in the rover list. The rover las
 - On the Pi, check that mosquitto is running: `systemctl status mosquitto-internal.service`.
 - On the Pi, check that the target is up: `systemctl status friday-core-os.target`.
 
+## Step 7 — Build + start the module-registry (Phase A2)
+
+Steps 0–6 gave you a Core Hub *foundation*. This step makes the rover's brain
+actually run: it builds the Friday Labs OS ROS 2 packages and starts the
+**module-registry** — the service every other rover service registers to.
+
+On the Pi:
+
+```bash
+cd /opt/friday/friday-core-os
+
+# clone + colcon-build the Core Hub ROS 2 packages into /opt/friday/ros2_ws
+# (this takes 5-15 min on a Pi 4B — it compiles friday_msgs)
+sudo bash provision/build-rover-code.sh
+
+# start the registry
+sudo systemctl enable --now module-registry.service
+
+# confirm it's alive
+sudo bash provision/verify.sh
+```
+
+`verify.sh` should now additionally show:
+
+```
+[OK]   module-registry.service active
+[OK]   register_module ROS service present
+```
+
+To see the registry actually working:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/friday/ros2_ws/install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 service list | grep mark1      # -> /mark1/system/register_module
+ros2 topic echo /mark1/system/presence   # modules appear here as they register
+```
+
+With no other modules connected yet, the registry runs but reports an empty
+fleet — that's correct. When you later connect the Locomotion ESP32 or the
+Research Deck, they register here and appear on `/mark1/system/presence`.
+
+**If `build-rover-code.sh` fails:** the most common cause on a fresh Pi is a
+missing rosdep key or an out-of-memory colcon build (the Pi 4B can run low
+building `friday_msgs`). Add swap if needed:
+`sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, then re-run.
+
+**Why one service does three jobs:** in this walking-skeleton phase the
+`core_hub` node provides module-registry *plus* a lite health-manager and a lite
+safety-supervisor. The arch doc lists those as separate services; they get split
+out in Phase B when each gets its full implementation. See
+[`docs/architecture.md`](architecture.md).
+
 ## What this DID NOT do (yet)
 
 Deliberate scope: this is **Phase A1 — foundation only**. It does NOT do:

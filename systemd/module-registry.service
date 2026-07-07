@@ -1,0 +1,62 @@
+# module-registry.service — the Friday Labs OS orchestration spine.
+#
+# Runs the `core_hub` ROS 2 node from friday_core_hub. In the current
+# walking-skeleton this ONE node provides three of the arch-doc services:
+#   * module-registry        (RegisterModule service + ModulePresence broadcast)
+#   * system-health-manager  (lite — heartbeat liveness classification)
+#   * safety-supervisor      (lite — lifecycle bring-up + authority lease)
+# Phase B splits these into their own units as each gets a full implementation.
+# The service name stays `module-registry` because that is the boot-order root
+# every other service depends on (mission-planner, sensor-fusion-manager).
+#
+# NOTE ON HARDENING: this unit does NOT include the strict
+# friday-core-os@.service.d/security.conf drop-in. ROS 2 / DDS needs shared
+# memory (/dev/shm), multicast discovery, and rclpy trips MemoryDenyWriteExecute.
+# A DDS-safe hardening profile is applied inline below and is intentionally
+# looser than the non-ROS services. See docs/hardening-ros.md.
+
+[Unit]
+Description=Friday Labs OS — module-registry (core_hub spine)
+Documentation=https://github.com/Friday-Labs-Inc/friday-labs-os
+PartOf=friday-core-os.target
+After=network-online.target mosquitto-internal.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Exec through the ros2-run wrapper (installed by build-rover-code.sh), which
+# sources ROS 2 + the Friday overlay before exec'ing the node. Keeps the
+# environment assembly in one place and out of the unit file.
+ExecStart=/opt/friday/bin/ros2-run friday_core_hub core_hub --ros-args -p authority_holder:=MARK1-CORE-001
+# Fast-DDS on a single host: shared-memory + localhost discovery is enough for
+# the Core Hub's own nodes; the internal-ethernet subnet carries no DDS.
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=ROS_DOMAIN_ID=42
+
+User=friday
+Group=friday
+StateDirectory=friday
+LogsDirectory=friday
+WorkingDirectory=/opt/friday/ros2_ws
+
+# --- DDS-safe hardening (looser than the non-ROS drop-in, deliberately) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/friday/ros2_ws /var/lib/friday /var/log/friday /dev/shm
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# NOT set (DDS/rclpy need these): MemoryDenyWriteExecute, PrivateTmp,
+# strict SystemCallFilter, IPAddressDeny. Revisit per-transport in Phase B.
+
+# --- restart policy with crash-loop guard (per Spark Authority addendum) ---
+Restart=on-failure
+RestartSec=3s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Install]
+WantedBy=friday-core-os.target

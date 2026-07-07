@@ -64,6 +64,9 @@ configure_internal_network() {
     cat > /etc/netplan/10-internal-bridge.yaml <<EOF
 # Mark 1 Core Hub — internal ethernet bridge to Telemetry Gateway.
 # Managed by friday-core-os first-boot.sh; do not edit by hand.
+# activation-mode: always keeps the link admin-up and the static IP assigned even
+# with NO cable plugged (bench: the Telemetry Gateway isn't wired yet), so the
+# internal broker can always bind ${INTERNAL_IP}. On the field rover eth0 is cabled.
 network:
   version: 2
   ethernets:
@@ -72,9 +75,12 @@ network:
         - ${INTERNAL_IP}/24
       dhcp4: false
       optional: true
+      activation-mode: always
 EOF
     chmod 600 /etc/netplan/10-internal-bridge.yaml
     netplan apply || warn "netplan apply reported an issue; check 'journalctl -u systemd-networkd'"
+    # Belt-and-suspenders: force admin-up so the static addr is bindable with no carrier.
+    ip link set "$INTERNAL_IFACE" up 2>/dev/null || true
 }
 
 install_mosquitto() {

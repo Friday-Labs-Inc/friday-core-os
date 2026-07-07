@@ -49,8 +49,11 @@ create_friday_user() {
 
 set_hostname() {
     log "hostname → $HOSTNAME"
-    if [ "$(hostname)" != "$HOSTNAME" ]; then
-        hostnamectl set-hostname "$HOSTNAME"
+    hostnamectl set-hostname "$HOSTNAME"
+    # cloud-init rewrites the hostname on EVERY boot unless told to preserve it,
+    # which reverts our hostname after a reboot. Opt out.
+    if [ -d /etc/cloud/cloud.cfg.d ]; then
+        echo "preserve_hostname: true" > /etc/cloud/cloud.cfg.d/99-friday-preserve-hostname.cfg
     fi
     # ensure /etc/hosts resolves the new hostname locally
     grep -qE "^127\.0\.1\.1\s+$HOSTNAME" /etc/hosts \

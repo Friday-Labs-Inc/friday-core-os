@@ -49,8 +49,12 @@ if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
     rosdep init || true
 fi
 rosdep update --rosdistro "$ROS_DISTRO" >/dev/null 2>&1 || log "rosdep update skipped (offline?)"
+# ROS setup scripts reference unbound vars — disable nounset around the source, or
+# 'set -u' aborts with 'AMENT_TRACE_SETUP_FILES: unbound variable'.
+set +u
 # shellcheck disable=SC1090
 source "/opt/ros/$ROS_DISTRO/setup.bash"
+set -u
 rosdep install --from-paths "$WS/src/friday-labs-os/src" --ignore-src -y \
     --rosdistro "$ROS_DISTRO" 2>/dev/null || log "rosdep install skipped (offline?)"
 
@@ -73,7 +77,8 @@ install -D -m 0755 /dev/stdin /opt/friday/bin/ros2-run <<EOF
 #!/usr/bin/env bash
 # ros2-run — exec a ROS 2 entry point with the Friday workspace sourced.
 # Usage: ros2-run <package> <executable> [args...]
-set -euo pipefail
+# No 'set -u' here: ROS setup scripts reference unbound vars and would abort.
+set -eo pipefail
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source "$WS/install/setup.bash"
 exec ros2 run "\$@"

@@ -36,6 +36,17 @@ require_ubuntu_24() {
 }
 
 # ---- steps --------------------------------------------------------------
+create_friday_user() {
+    log "service user → friday"
+    if ! id friday >/dev/null 2>&1; then
+        useradd --system --home-dir /var/lib/friday --create-home \
+                --shell /usr/sbin/nologin friday
+    fi
+    # dialout = access to /dev/ttyUSB* for micro-ROS serial to the ESP32s.
+    usermod -aG dialout friday 2>/dev/null || true
+    install -d -o friday -g friday /var/lib/friday /var/log/friday
+}
+
 set_hostname() {
     log "hostname → $HOSTNAME"
     if [ "$(hostname)" != "$HOSTNAME" ]; then
@@ -79,6 +90,10 @@ install_mosquitto() {
         /etc/systemd/system/friday-core-os.target
     install -D -m 0644 "$REPO_ROOT/systemd/friday-core-os@.service.d/security.conf" \
         /etc/systemd/system/friday-core-os@.service.d/security.conf
+    # module-registry unit installed (but NOT enabled — it needs the ROS
+    # workspace, built later by build-rover-code.sh, which enables it).
+    install -D -m 0644 "$REPO_ROOT/systemd/module-registry.service" \
+        /etc/systemd/system/module-registry.service
     systemctl stop mosquitto 2>/dev/null || true
     systemctl disable mosquitto 2>/dev/null || true
     systemctl daemon-reload
@@ -152,6 +167,7 @@ main() {
     require_ubuntu_24
     log "starting Mark 1 Core Hub provisioning"
 
+    create_friday_user
     set_hostname
     configure_internal_network
     install_mosquitto

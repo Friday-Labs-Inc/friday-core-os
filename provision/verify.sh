@@ -44,6 +44,17 @@ else
     echo "[SKIP] wireguard: no config, tunnel not configured yet"
 fi
 
+# --- module-registry (Phase A2; only once the ROS workspace is built) ---
+if systemctl is-enabled module-registry.service >/dev/null 2>&1; then
+    check "module-registry.service active" systemctl is-active module-registry.service
+    if [ -f /opt/friday/ros2_ws/install/setup.bash ]; then
+        check "register_module ROS service present" bash -lc \
+          "export ROS_DOMAIN_ID=42; source /opt/ros/$ROS_DISTRO/setup.bash && source /opt/friday/ros2_ws/install/setup.bash && ros2 service list 2>/dev/null | grep -q register_module"
+    fi
+else
+    echo "[SKIP] module-registry: not enabled yet (run provision/build-rover-code.sh)"
+fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then
     echo "All checks passed. Core Hub is ready."

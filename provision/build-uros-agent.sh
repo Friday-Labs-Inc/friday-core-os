@@ -31,7 +31,12 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Canonical path of the agent binary after a successful colcon install.
 # Used as the idempotency sentinel AND baked into the runtime wrappers.
-AGENT_BIN="$AGENT_WS/install/micro_xrce_dds_agent/lib/micro_xrce_dds_agent/MicroXRCEAgent"
+# NOTE: on the jazzy branch of micro_ros_setup, colcon builds a package named
+# 'micro_ros_agent' whose installed executable is ALSO named 'micro_ros_agent'
+# (lowercase, not the upstream project's 'MicroXRCEAgent'/'micro_xrce_dds_agent'
+# naming — verified against a real build on Pi 4B 2026-07-08). Confirmed CLI:
+# 'micro_ros_agent <udp4|serial|...> -D/--dev <dev> -b/--baudrate <n>' etc.
+AGENT_BIN="$AGENT_WS/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent"
 
 log() { echo "[build-uros-agent] $*"; }
 die() { echo "[build-uros-agent] ERROR: $*" >&2; exit 1; }

@@ -67,8 +67,9 @@ sudo bash provision/verify.sh
 docs/             bring-up guide, OS-level architecture
 systemd/          systemd target + service units + hardening drop-ins
 mosquitto/        internal MQTT broker config (Core ↔ Telemetry bridge)
-provision/        first-boot provisioning scripts + verify.sh + secrets/ (gitignored)
-image/            pi-gen / RAUC / cloud-init image build configuration (Phase A2)
+udev/             hotplug rules (micro-ROS serial agent trigger)
+provision/        first-boot + build scripts, verify.sh, secrets/ (gitignored)
+image/            pi-gen / RAUC / cloud-init image build configuration (future)
 ```
 
 ## Related repos

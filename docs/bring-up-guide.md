@@ -183,6 +183,97 @@ safety-supervisor. The arch doc lists those as separate services; they get split
 out in Phase B when each gets its full implementation. See
 [`docs/architecture.md`](architecture.md).
 
+## Step 8 — Build the micro-ROS agent (prep for a real ESP32)
+
+> **No ESP32 is required for this step.** You are building and verifying the
+> OS-side bridge so it's ready the moment you connect one. The serial agent
+> will not start until a device is physically plugged in — nothing crashes
+> or errors on a bare Pi.
+
+The **micro-ROS agent** is the daemon that makes an ESP32 visible inside the
+Core Hub's ROS 2 graph. Without it, any micro-ROS firmware running on the
+ESP32 is invisible to `ros2 topic list`. This step builds the agent from
+source, installs it to `/opt/friday/microros_ws`, and enables the static
+UDP/WiFi agent service.
+
+```bash
+cd /opt/friday/friday-core-os
+
+# builds the micro-ROS agent, installs wrappers + systemd units + the udev
+# rule, and enables + starts the UDP agent — all in one idempotent script
+# (first run takes 10-20 min on a Pi 4B — it compiles Micro-XRCE-DDS-Agent
+# from C++; safe to re-run, it skips the build if already done)
+sudo bash provision/build-uros-agent.sh
+```
+
+Watch the output. The script stops with a clear error if anything fails.
+Common ones:
+
+- "rosdep update failed" → check network connectivity and re-run; this is no
+  longer silently swallowed, so a real failure here is a real failure to fix.
+- "colcon build failed" / cmake error → nearly always a missing
+  `build-essential` (the script installs it explicitly, so this would be
+  unusual) or an out-of-memory colcon run: `sudo fallocate -l 2G /swapfile
+  && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon
+  /swapfile`, then re-run.
+
+### Verify the UDP/WiFi agent is up
+
+The script already enabled and started it — just confirm:
+
+```bash
+systemctl status micro-ros-agent-udp.service
+# Status should say: active (running)
+
+ss -ulnp | grep 8888
+# Should print a line with 0.0.0.0:8888 showing the agent bound
+```
+
+If it shows `activating` for more than a few seconds, check the journal:
+`journalctl -u micro-ros-agent-udp.service -n 40 --no-pager` — the most
+common causes are a wrong `ROS_DOMAIN_ID` or a stale binary path, both logged
+clearly.
+
+### When you do connect a real ESP32 (future step)
+
+**Serial / USB path (the LCU ESP32):** plug it into any USB port. udev
+detects the device and automatically starts
+`micro-ros-agent-serial@ttyUSB0.service` (or `@ttyACM0` — whichever device
+node the kernel assigns). You do not run any command yourself.
+
+```bash
+systemctl status 'micro-ros-agent-serial@*.service'
+```
+
+Unplug the board and the instance stops cleanly — no config change needed if
+it comes back on a different USB port next time; udev handles the mapping.
+
+**WiFi / UDP path:** point the micro-ROS WiFi transport on the ESP32 side at
+`10.0.1.1:8888` (the Core Hub's internal address) — `micro-ros-agent-udp.service`
+is already listening.
+
+### Confirm the agent is on the graph (once an ESP32 is connected)
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /opt/friday/microros_ws/install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 node list          # the ESP32's micro-ROS node should appear here
+ros2 topic list         # topics published by the ESP32 appear here
+```
+
+With no ESP32 connected, both commands return only the Core Hub's own
+nodes — that's correct, not a failure.
+
+**Operational note:** like every DDS participant, the micro-ROS agent locks
+in its network view at process start. If the Core Hub's network changes
+while an agent is running, restart the affected instance so it redoes DDS
+discovery: `sudo systemctl restart micro-ros-agent-udp.service` (or the
+relevant `micro-ros-agent-serial@<dev>.service`). See
+[`docs/micro-ros-agent.md`](micro-ros-agent.md) for the full design
+rationale.
+
 ## What this DID NOT do (yet)
 
 Deliberate scope: this is **Phase A1 — foundation only**. It does NOT do:

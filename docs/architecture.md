@@ -34,14 +34,20 @@ Three layers, bottom to top:
 - **Bring-up automation** — one shell script (`provision/first-boot.sh`) turns a bare Ubuntu install into all of the above.
 - **Post-provisioning verification** — `provision/verify.sh` runs a health-check that either says "all OK" or points at the exact failure.
 
-## What Phase A2 adds
+## What Phase A2 delivers (done)
 
-Not yet built. Planned next:
+- **The module-registry** — `module-registry.service` runs the real `core_hub` ROS 2 node from `friday_labs_os`'s walking-skeleton (`build-rover-code.sh` builds it into `/opt/friday/ros2_ws`). This is not a placeholder: it serves `RegisterModule`, broadcasts `ModulePresence`, tracks per-module heartbeat liveness, and runs a lite safety-supervisor (lifecycle bring-up + authority lease). Verified against a real ESP32-mobility software simulator: register → heartbeat → drive → safe-stop, end to end.
+
+## What Phase A3 delivers (done)
+
+- **The micro-ROS agent** — the bridge that lets a real ESP32 (over USB-serial or WiFi/UDP) join the Core Hub's ROS 2 graph. See [`docs/micro-ros-agent.md`](micro-ros-agent.md) for the full design. Two systemd-managed modes: a udev-triggered serial template (`micro-ros-agent-serial@.service`, one instance per plugged-in device, safety path for the Locomotion Control Unit) and a static always-on UDP service (`micro-ros-agent-udp.service`, bench/non-safety path). Built by `provision/build-uros-agent.sh`.
+
+## What's still not built
 
 - **A/B partitions + RAUC** — atomic OS updates with automatic rollback. Any bad update reverts on next boot.
 - **LUKS full-disk encryption** — data partition + rover key encrypted at rest.
 - **TPM 2.0 key sealing** — the rover's Ed25519 signing key held in a TPM chip; released only to a validated (measured-boot) OS. Requires an external TPM module (~$12).
-- **Placeholder service units** for all 10 Friday Labs OS services listed in the compute-arch doc, wired to the target. Each starts as a "hello world" ROS 2 node until Phase B replaces them with the real implementations.
+- **The remaining Friday Labs OS services** — `system-health-manager`, `command-router`, `safety-supervisor`, `fault-manager`, `authority-lease-service`, `logging-service`, `mission-planner`, `autonomy-manager`, `sensor-fusion-manager`, `mode-manager` — each currently exists only as logic bundled inside the walking-skeleton `core_hub` node; splitting them into independent services is Phase B+.
 
 ## The three networks the Core Hub sits on
 
@@ -51,30 +57,30 @@ The Core Hub is a small router. Three networks pass through it:
 
 **2. WireGuard tunnel (via any bearer)** — an encrypted tunnel to the Command Center over whatever bearer is up (4G via Telemetry Gateway, Wi-Fi, or a lab LAN during development). Every packet is WireGuard-encrypted + signed at the application layer with Ed25519 CBOR envelopes. Two layers of security.
 
-**3. USB / serial (Locomotion + Aerial Bay ESP32s)** — micro-ROS over USB CDC serial. Not IP-routed; ROS 2 messages tunneled over serial by the `micro-ros-agent` daemon.
+**3. USB / serial (Locomotion + Aerial Bay ESP32s)** — micro-ROS over USB CDC serial. Not IP-routed; ROS 2 messages bridged over serial (or WiFi/UDP for bench/non-safety nodes) by the micro-ROS agent — see [`docs/micro-ros-agent.md`](micro-ros-agent.md).
 
-## The service hierarchy (once Phase A2 lands)
-
-Per the compute-architecture doc, `friday-core-os.target` will own:
+## The service hierarchy (current state)
 
 ```
 friday-core-os.target
 ├── mosquitto-internal.service           [Phase A1 ✅]
 ├── wg-quick@wg-core.service              [Phase A1 ✅]
-├── module-registry.service              [Phase A2 — placeholder, Phase B — real]
-├── system-health-manager.service        [Phase A2 → Phase B]
-├── command-router.service               [Phase A2 → Phase B]
-├── safety-supervisor.service            [Phase A2 → Phase B]
-├── fault-manager.service                [Phase A2 → Phase B]
-├── authority-lease-service.service      [Phase A2 → Phase B]
-├── logging-service.service              [Phase A2 → Phase B]
-├── mission-planner.service              [Phase A2 → Phase C]
-├── autonomy-manager.service             [Phase A2 → Phase D]
-├── sensor-fusion-manager.service        [Phase A2 → Phase C]
+├── module-registry.service               [Phase A2 ✅ — real core_hub node]
+├── micro-ros-agent-udp.service            [Phase A3 ✅ — static, WiFi/bench]
+├── micro-ros-agent-serial@<dev>.service   [Phase A3 ✅ — udev-triggered, per device]
+├── system-health-manager.service        [bundled into module-registry.service today]
+├── command-router.service               [Phase B]
+├── safety-supervisor.service            [bundled into module-registry.service today]
+├── fault-manager.service                [Phase B]
+├── authority-lease-service.service      [Phase B]
+├── logging-service.service              [Phase B]
+├── mission-planner.service              [Phase C]
+├── autonomy-manager.service             [Phase D]
+├── sensor-fusion-manager.service        [Phase C]
 └── mode-manager.service                 [Phase C]
 ```
 
-Each `.service` = one ROS 2 lifecycle node, subject to the hardened drop-in.
+Each `.service` = one ROS 2 lifecycle node (or, for the micro-ROS agent, a plain bridge process), subject to the appropriate hardened drop-in (strict for non-ROS services, DDS-safe-loose for anything on the ROS 2 graph — see [`docs/hardening-ros.md`](hardening-ros.md)).
 
 ## Design decisions worth calling out
 

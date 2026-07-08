@@ -1,0 +1,99 @@
+# micro-ros-agent-serial@.service — micro-ROS agent, USB-serial transport.
+#
+# TEMPLATE UNIT. The instance name (@) is the kernel tty device name, e.g.:
+#   micro-ros-agent-serial@ttyUSB0.service   (FTDI/CH340/CP210x USB-UART)
+#   micro-ros-agent-serial@ttyACM0.service   (ESP32-S3 native USB CDC-ACM)
+#
+# Do NOT start instances of this unit manually. The udev rule
+# udev/99-friday-microros-serial.rules starts the correct instance
+# automatically when a USB serial device is plugged in, and BindsTo=
+# dev-%i.device below stops it automatically on unplug.
+#
+# This is the SAFETY-CRITICAL path for the Locomotion Control Unit ESP32.
+# USB-serial is deterministic, low-jitter, and survives WiFi outages.
+# The WiFi/UDP alternative is micro-ros-agent-udp.service.
+#
+# STOP-ON-REMOVE: handled by BindsTo=dev-%i.device, NOT by a udev RUN+= line.
+# When the USB cable is pulled, the kernel removes the tty device; systemd
+# tears down dev-ttyUSB0.device (or dev-ttyACM0.device); BindsTo= propagates
+# that tear-down to this service instance within the same transaction — no
+# orphan MicroXRCEAgent processes, no crash-loop on a missing /dev node, and
+# no udevd-worker deadlock from a synchronous RUN+= systemctl call racing the
+# REMOVE event.
+#
+# Serial device access: User=friday is added to the 'dialout' group by
+# provision/first-boot.sh. SupplementaryGroups=dialout is declared explicitly
+# here so the group membership is asserted at the systemd level.
+# PrivateDevices=yes is NOT set — that would hide /dev/ttyUSB* and
+# /dev/ttyACM* from the service, defeating the entire purpose of this unit.
+#
+# NOTE ON HARDENING: this unit does NOT include the strict
+# friday-core-os@.service.d/security.conf drop-in. Same rationale as
+# module-registry.service and micro-ros-agent-udp.service: DDS bridge
+# runtime. See docs/hardening-ros.md.
+
+[Unit]
+Description=Friday Labs OS — micro-ROS agent (serial /dev/%i)
+Documentation=https://github.com/Friday-Labs-Inc/friday-labs-os
+PartOf=friday-core-os.target
+# BindsTo + After on the device unit: this service starts only once the
+# device is present, and stops the moment the device disappears.
+BindsTo=dev-%i.device
+After=dev-%i.device module-registry.service
+
+[Service]
+Type=simple
+# Exec through the micro-ros-agent-serial wrapper installed by
+# provision/build-uros-agent.sh. Path MUST match exactly what that script
+# installs (a prior draft drifted to 'microros-agent-serial' here — fixed).
+#
+# CONTRACT: pass ONLY the kernel device name (%i, e.g. ttyUSB0), NOT a /dev/
+# path. The wrapper itself prepends /dev/ before invoking MicroXRCEAgent —
+# a prior draft passed /dev/%i here AND had the wrapper prepend /dev/ again,
+# producing the nonexistent path /dev//dev/ttyUSB0. Fixed: %i only.
+ExecStart=/opt/friday/bin/micro-ros-agent-serial %i
+# DDS domain must match every other ROS 2 node on the Core Hub.
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=ROS_DOMAIN_ID=42
+# ROS logs to ~/.ros by default, but ProtectHome=yes hides /home. Point
+# ROS_HOME at the service's writable state dir so log dirs can be created.
+Environment=ROS_HOME=/var/lib/friday/ros
+
+User=friday
+Group=friday
+# Explicit group assertion — first-boot.sh adds 'friday' to dialout, but
+# declaring it here makes the requirement visible and enforced by systemd.
+SupplementaryGroups=dialout
+StateDirectory=friday
+LogsDirectory=friday
+WorkingDirectory=/opt/friday/microros_ws
+
+# --- DDS-safe hardening (looser than the non-ROS drop-in, deliberately) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/friday/microros_ws /var/lib/friday /var/log/friday /dev/shm
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# NOT set (DDS bridge needs these): MemoryDenyWriteExecute, PrivateTmp,
+# strict SystemCallFilter, IPAddressDeny. Revisit per-transport in Phase B.
+# NOT set: PrivateDevices=yes — that would hide /dev/ttyUSB* and /dev/ttyACM*
+# from the service, defeating the entire purpose of this unit.
+
+# --- restart policy with crash-loop guard (per Spark Authority addendum) ---
+# RestartSec=3s guards against tight loops if the agent crashes while the
+# device is still physically present. If the device has been unplugged,
+# BindsTo= stops the unit before any restart is attempted — the guard is
+# only exercised on genuine agent crashes, not on clean hot-unplug.
+Restart=on-failure
+RestartSec=3s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# No [Install] section: this unit is activated by udev, not enabled at boot.
+# 'systemctl enable micro-ros-agent-serial@.service' would create no useful
+# symlink (there is no device name to target at enable time). Only the unit
+# file is installed; udev/99-friday-microros-serial.rules does the rest.

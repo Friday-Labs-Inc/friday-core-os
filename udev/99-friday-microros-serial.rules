@@ -1,0 +1,42 @@
+# 99-friday-microros-serial.rules — hotplug trigger for the micro-ROS serial agent.
+#
+# When a USB serial adapter carrying an ESP32 (or any ttyUSB*/ttyACM* device)
+# is plugged in, this rule arranges for systemd to start the matching
+# micro-ros-agent-serial@ template instance.
+#
+# HOW START WORKS
+# TAG+="systemd" causes udev to synthesize a device unit (dev-ttyUSB0.device,
+# dev-ttyACM0.device, etc.) that systemd tracks. ENV{SYSTEMD_WANTS}+= APPENDS
+# the corresponding micro-ros-agent-serial@ instance to that device unit's
+# Wants list (never plain '=' assignment — another rule may already be
+# setting SYSTEMD_WANTS on the same tty device; '+=' avoids clobbering it).
+# %k expands to the kernel device name (e.g. ttyUSB0) at udev time.
+#
+# HOW STOP WORKS — BindsTo= in the unit file, NOT a RUN+= rule here
+# We deliberately do NOT add a REMOVE action with RUN+="systemctl stop ...".
+# That pattern is fragile: RUN+= blocks udev event processing, and a
+# synchronous systemctl call during an unplug event can race/deadlock with
+# systemd's own handling of the device's removal. Instead, the unit file
+# declares BindsTo=dev-%i.device. When udev processes the REMOVE event it
+# tears down the device unit, and systemd propagates that tear-down to the
+# bound service instance in the same transaction — clean, atomic, no race.
+#
+# WHY ttyUSB* AND ttyACM* (separate rules, not | alternation)
+# ttyUSB*: FTDI/CH340/CP210x USB-UART chips — the most common USB-serial
+#          adapters on ESP32 DevKit boards.
+# ttyACM*: native USB CDC-ACM — used by ESP32-S3 boards in native USB mode.
+# Two rules instead of a KERNEL=="ttyUSB*|ttyACM*" alternation for
+# unambiguous behavior across all udev versions shipped with Ubuntu 24.04.
+#
+# PRIORITY 99 (late): runs after the kernel's built-in tty rules have already
+# set up the device node and assigned it to the 'dialout' group. By the time
+# this rule fires, the 'friday' service user (already in 'dialout' per
+# provision/first-boot.sh) can open the device without any chmod/chown here.
+
+# ESP32 DevKit / FTDI / CH340 / CP210x USB-UART adapters
+SUBSYSTEM=="tty", ACTION=="add", KERNEL=="ttyUSB[0-9]*", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="micro-ros-agent-serial@%k.service"
+
+# ESP32-S3 native USB CDC-ACM and Arduino-class boards
+SUBSYSTEM=="tty", ACTION=="add", KERNEL=="ttyACM[0-9]*", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="micro-ros-agent-serial@%k.service"

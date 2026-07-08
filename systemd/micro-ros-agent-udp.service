@@ -1,0 +1,70 @@
+# micro-ros-agent-udp.service — micro-ROS agent, WiFi/UDP transport.
+#
+# Listens on UDP port 8888 (the micro-ROS default) for any ESP32 or other
+# micro-ROS client that connects over WiFi. Use cases:
+#   * bench proof-of-life testing without a USB cable
+#   * non-safety sensor nodes that can tolerate WiFi latency/jitter
+#   * the backup/secondary ESP32 (if fitted)
+#
+# The SAFETY-CRITICAL path for the Locomotion Control Unit uses USB-serial,
+# not this unit — USB is deterministic, low-jitter, and survives WiFi outages.
+# See micro-ros-agent-serial@.service and udev/99-friday-microros-serial.rules.
+#
+# This service is static and always-on (enabled under friday-core-os.target).
+# It just listens on a UDP socket waiting for a client — no device-presence
+# issue, so the udev-trigger pattern used for serial is not needed here.
+#
+# NOTE ON HARDENING: this unit does NOT include the strict
+# friday-core-os@.service.d/security.conf drop-in. The micro-ROS agent
+# bridges into the ROS 2 / DDS graph (it creates ROS 2 entities on behalf of
+# the ESP32), so it shares the same DDS runtime constraints as
+# module-registry.service. A DDS-safe hardening profile is applied inline
+# below. See docs/hardening-ros.md.
+
+[Unit]
+Description=Friday Labs OS — micro-ROS agent (UDP/WiFi, port 8888)
+Documentation=https://github.com/Friday-Labs-Inc/friday-labs-os
+PartOf=friday-core-os.target
+After=network-online.target module-registry.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Exec through the micro-ros-agent-udp wrapper installed by
+# provision/build-uros-agent.sh. Path MUST match exactly what that script
+# installs (a prior draft drifted to 'microros-agent-udp' here — fixed).
+ExecStart=/opt/friday/bin/micro-ros-agent-udp
+# DDS domain must match every other ROS 2 node on the Core Hub.
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=ROS_DOMAIN_ID=42
+# ROS logs to ~/.ros by default, but ProtectHome=yes hides /home. Point
+# ROS_HOME at the service's writable state dir so log dirs can be created.
+Environment=ROS_HOME=/var/lib/friday/ros
+
+User=friday
+Group=friday
+StateDirectory=friday
+LogsDirectory=friday
+WorkingDirectory=/opt/friday/microros_ws
+
+# --- DDS-safe hardening (looser than the non-ROS drop-in, deliberately) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/friday/microros_ws /var/lib/friday /var/log/friday /dev/shm
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# NOT set (DDS bridge needs these): MemoryDenyWriteExecute, PrivateTmp,
+# strict SystemCallFilter, IPAddressDeny. Revisit per-transport in Phase B.
+
+# --- restart policy with crash-loop guard (per Spark Authority addendum) ---
+Restart=on-failure
+RestartSec=3s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Install]
+WantedBy=friday-core-os.target

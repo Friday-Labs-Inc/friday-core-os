@@ -20,6 +20,7 @@ internal MQTT bridge that connects to the Telemetry Gateway over Ethernet.
 | Internal bridge | `mosquitto` broker on Ethernet interface (signed CBOR envelopes to Telemetry Gateway) |
 | Downstream links | USB-serial micro-ROS to Locomotion ESP32 + Aerial Bay ESP32 |
 | systemd target | `friday-core-os.target` |
+| OS control | `os-control-agent` — Command Center starts/stops/restarts allowlisted units (unprivileged `fridayctl`, polkit-scoped, audited) |
 
 ## Architecture context
 

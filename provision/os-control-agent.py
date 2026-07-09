@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Friday Labs OS — service control + brain-config agent (Core Hub).
+"""Friday Labs OS — service control + config agent (Core Hub).
 
-Two scoped capabilities for the Command Center, over HTTP (bearer-token auth):
+Scoped capabilities for the Command Center, over HTTP (bearer-token, fail-closed):
   1. systemd control — allowlisted start/stop/restart (NOT general remote-exec),
      runs as unprivileged fridayctl, polkit-scoped to the same units.
   2. brain config — read/write SOUL.md (fixed path, size-capped, atomic + fsync).
+  3. operating mode — read/write the active mode (autonomy × profile × brain),
+     validated against fixed allowlists, atomic + fsync.
 
 Auth fails CLOSED: refuses to start without a token; constant-time compare.
-Stdlib only.
+Every mutating action (+ auth failure) is audited. Stdlib only.
 """
 import datetime, hmac, json, os, subprocess, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,12 +23,22 @@ ALLOW = [
     "micro-ros-agent-gpio.service", "micro-ros-agent-udp.service",
 ]
 ACTIONS = {"start", "stop", "restart"}
+
 BRAIN_SOUL = os.environ.get("FRIDAY_BRAIN_SOUL", "/var/lib/friday-brain/SOUL.md")
+MODE_FILE = os.environ.get("FRIDAY_MODE_FILE", "/var/lib/friday-os/mode.json")
 MAX_SOUL_BYTES = 65536
+# operating-mode allowlists (safety: only known modes may be set)
+PROFILES = {"Bench", "Agriculture", "Forestry", "Environmental", "Surveillance"}
+BRAINS = {"Rules", "Nav2", "Vision", "Hermes"}
+MODE_DEFAULT = {"autonomy_level": 0, "mission_profile": "Bench", "brain": "Rules"}
 
 
-def audit(entry: dict) -> None:
-    entry = {"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **entry}
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def audit(entry):
+    entry = {"ts": now_iso(), **entry}
     line = json.dumps(entry, separators=(",", ":"))
     print("AUDIT " + line, flush=True)
     try:
@@ -34,6 +46,14 @@ def audit(entry: dict) -> None:
             f.write(line + "\n")
     except OSError:
         pass
+
+
+def atomic_write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text); f.flush(); os.fsync(f.fileno())
+    os.replace(tmp, path)  # durable atomic swap
 
 
 def systemctl(*args):
@@ -51,7 +71,7 @@ def status(name):
 
 
 class H(BaseHTTPRequestHandler):
-    timeout = 30  # per-connection socket deadline; bounds slow-loris / stalled reads
+    timeout = 30
 
     def _auth(self):
         return hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {TOKEN}")
@@ -92,6 +112,14 @@ class H(BaseHTTPRequestHandler):
                 content, exists = "", False
             return self._send(200, {"path": BRAIN_SOUL, "exists": exists,
                                     "bytes": len(content.encode("utf-8")), "content": content})
+        if self.path == "/config/mode":
+            try:
+                with open(MODE_FILE, encoding="utf-8") as f:
+                    mode = json.load(f)
+                mode["exists"] = True
+            except (FileNotFoundError, ValueError):
+                mode = {**MODE_DEFAULT, "exists": False}
+            return self._send(200, mode)
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -124,32 +152,44 @@ class H(BaseHTTPRequestHandler):
         if not self._auth():
             audit({"client": client, "event": "auth_failed", "path": self.path})
             return self._send(401, {"error": "unauthorized"})
-        if self.path != "/config/soul":
-            return self._send(404, {"error": "not found"})
         body, err = self._read_json()
         if err is not None:
             return
-        content = body.get("content")
-        if not isinstance(content, str):
-            return self._send(400, {"error": "content must be a string"})
-        data = content.encode("utf-8")
-        if len(data) > MAX_SOUL_BYTES:
-            return self._send(413, {"error": f"SOUL.md exceeds {MAX_SOUL_BYTES} bytes"})
-        try:
-            os.makedirs(os.path.dirname(BRAIN_SOUL), exist_ok=True)
-            tmp = BRAIN_SOUL + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(content); f.flush(); os.fsync(f.fileno())
-            os.replace(tmp, BRAIN_SOUL)
-        except OSError as e:
-            audit({"client": client, "event": "soul_write_failed", "error": str(e)[:200]})
-            return self._send(500, {"error": f"write failed: {e}"})
-        audit({"client": client, "event": "soul_write", "bytes": len(data)})
-        return self._send(200, {"ok": True, "path": BRAIN_SOUL, "bytes": len(data)})
+        if self.path == "/config/soul":
+            content = body.get("content")
+            if not isinstance(content, str):
+                return self._send(400, {"error": "content must be a string"})
+            data = content.encode("utf-8")
+            if len(data) > MAX_SOUL_BYTES:
+                return self._send(413, {"error": f"SOUL.md exceeds {MAX_SOUL_BYTES} bytes"})
+            try:
+                atomic_write(BRAIN_SOUL, content)
+            except OSError as e:
+                audit({"client": client, "event": "soul_write_failed", "error": str(e)[:200]})
+                return self._send(500, {"error": f"write failed: {e}"})
+            audit({"client": client, "event": "soul_write", "bytes": len(data)})
+            return self._send(200, {"ok": True, "path": BRAIN_SOUL, "bytes": len(data)})
+        if self.path == "/config/mode":
+            lvl, prof, brn = body.get("autonomy_level"), body.get("mission_profile"), body.get("brain")
+            if not isinstance(lvl, int) or lvl not in (0, 1, 2, 3):
+                return self._send(400, {"error": "autonomy_level must be an int 0..3"})
+            if prof not in PROFILES:
+                return self._send(400, {"error": f"mission_profile must be one of {sorted(PROFILES)}"})
+            if brn not in BRAINS:
+                return self._send(400, {"error": f"brain must be one of {sorted(BRAINS)}"})
+            mode = {"autonomy_level": lvl, "mission_profile": prof, "brain": brn, "updated": now_iso()}
+            try:
+                atomic_write(MODE_FILE, json.dumps(mode, indent=2))
+            except OSError as e:
+                audit({"client": client, "event": "mode_write_failed", "error": str(e)[:200]})
+                return self._send(500, {"error": f"write failed: {e}"})
+            audit({"client": client, "event": "mode_set", "autonomy_level": lvl, "mission_profile": prof, "brain": brn})
+            return self._send(200, {"ok": True, **mode})
+        return self._send(404, {"error": "not found"})
 
 
 if __name__ == "__main__":
     if not TOKEN:
         sys.exit("FATAL: FRIDAY_OS_CONTROL_TOKEN is empty — refusing to start (would disable auth)")
-    print(f"os-control-agent on :{PORT} · {len(ALLOW)} services · soul={BRAIN_SOUL} · auth=on")
+    print(f"os-control-agent on :{PORT} · {len(ALLOW)} services · soul + mode config · auth=on")
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

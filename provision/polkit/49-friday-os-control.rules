@@ -1,0 +1,17 @@
+// Friday Labs OS — allow the os-control-agent (user: fridayctl) to start/stop/
+// restart EXACTLY the Core Hub units, and nothing else. Returning YES needs no
+// auth agent, so it works for a headless system service. This is the OS-level
+// backstop to the agent's own allowlist (defence in depth).
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "fridayctl") { return polkit.Result.NOT_HANDLED; }
+    if (action.id !== "org.freedesktop.systemd1.manage-units") { return polkit.Result.NOT_HANDLED; }
+    var allowed = [
+        "friday-core-os.target",
+        "module-registry.service",
+        "mosquitto-internal.service",
+        "micro-ros-agent-gpio.service",
+        "micro-ros-agent-udp.service"
+    ];
+    if (allowed.indexOf(action.lookup("unit")) >= 0) { return polkit.Result.YES; }
+    return polkit.Result.NOT_HANDLED;
+});

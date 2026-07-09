@@ -19,6 +19,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 LogsDirectory=friday-os-control
+StateDirectory=friday-brain
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

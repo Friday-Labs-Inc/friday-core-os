@@ -3,7 +3,7 @@
 # module fleet on the Core Hub Pi 4. Idempotent. Run as root (sudo). REBOOT
 # REQUIRED after the first run (device-tree overlays load at boot).
 #
-# WIRING DECISION (2026-07-12, docs/build/MK1_Pi4_ESP32-S3_UART_Wiring.html in
+# WIRING DECISION (2026-07-12, docs/build/MK1_Pi4_ESP32_UART_Wiring.html in
 # the rover repo): all four module boards use UART2/3/4/5 — UART0 (pins 8/10)
 # stays reserved for the Linux serial console. UART is point-to-point, so each
 # board gets its own controller:

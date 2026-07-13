@@ -9,14 +9,15 @@
 # board gets its own controller:
 #
 #   board  overlay  Pi TX pin (GPIO)  Pi RX pin (GPIO)  expected tty
-#   ESP#1  uart2    27 (GPIO0)        28 (GPIO1)        ttyAMA1
-#   ESP#2  uart3     7 (GPIO4)        29 (GPIO5)        ttyAMA2
-#   ESP#3  uart4    24 (GPIO8)        21 (GPIO9)        ttyAMA3
-#   ESP#4  uart5    32 (GPIO12)       33 (GPIO13)       ttyAMA4
+#   ESP#1  uart2    27 (GPIO0)        28 (GPIO1)        ttyAMA2
+#   ESP#2  uart3     7 (GPIO4)        29 (GPIO5)        ttyAMA3
+#   ESP#3  uart4    24 (GPIO8)        21 (GPIO9)        ttyAMA4
+#   ESP#4  uart5    32 (GPIO12)       33 (GPIO13)       ttyAMA5
 #
-# The ttyAMA numbers are the usual enumeration order (ttyAMA0 = uart0), but
-# VERIFY after reboot with:  dmesg | grep ttyAMA
-# If your board enumerates differently, adjust WANTS below and re-run.
+# VERIFIED on Pi 4B (2026-07-13): uart2->ttyAMA2, uart3->ttyAMA3, uart4->ttyAMA4,
+# uart5->ttyAMA5.  There is NO ttyAMA1 (the mini-uart/uart1 is left disabled), so
+# the four module ttys are ttyAMA2..ttyAMA5 — NOT ttyAMA1..4.  If a future board
+# enumerates differently, re-check with `dmesg | grep ttyAMA` and adjust WANTS.
 #
 # Agents: reuses the hardened micro-ros-agent-serial@.service template (the
 # same one udev uses for USB serial). GPIO UARTs are always-present devices,
@@ -32,7 +33,7 @@ CONFIG=/boot/firmware/config.txt
 MARK_BEGIN="# --- friday module UARTs (setup-module-uarts.sh) ---"
 MARK_END="# --- end friday module UARTs ---"
 OVERLAYS=(uart2 uart3 uart4 uart5)
-WANTS=(ttyAMA1 ttyAMA2 ttyAMA3 ttyAMA4)
+WANTS=(ttyAMA2 ttyAMA3 ttyAMA4 ttyAMA5)
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)"; exit 1; }
 [ -f "$CONFIG" ] || { echo "missing $CONFIG — is this the Pi?"; exit 1; }

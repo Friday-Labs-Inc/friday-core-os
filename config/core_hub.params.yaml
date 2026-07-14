@@ -1,0 +1,12 @@
+# Core Hub supervisor — modules the reconcile loop keeps active.
+# A name whose services are not on the graph is skipped silently and retried
+# every reconcile tick, so listing not-yet-deployed modules is harmless.
+core_hub:
+  ros__parameters:
+    managed_nodes:
+      - mark1/mark1_mob_drive_001
+      - mark1/mark1_mob_steer_001
+      - mark1/mark1_sparkbay_001
+      - mark1/mark1_sensor_001
+      - phone            # friday_phone_bridge (PR #6) — pre-listed, deploys later
+    reconcile_period_s: 10.0

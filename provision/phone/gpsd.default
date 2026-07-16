@@ -1,0 +1,4 @@
+START_DAEMON="true"
+USBAUTO="false"
+DEVICES="udp://*:29998"
+GPSD_OPTIONS="-n"

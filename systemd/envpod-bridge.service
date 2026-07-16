@@ -1,0 +1,15 @@
+[Unit]
+Description=Friday Labs env pod bridge (Zero W SensorHub over WiFi)
+PartOf=friday-core-os.target
+After=module-registry.service network-online.target
+[Service]
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=ROS_DOMAIN_ID=42
+Environment=ROS_HOME=/var/lib/friday/ros
+Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+ExecStart=/opt/friday/bin/ros2-run friday_envpod_bridge envpod_bridge --ros-args -p udp_port:=5556
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=friday-core-os.target

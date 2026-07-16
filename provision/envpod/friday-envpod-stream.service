@@ -1,0 +1,14 @@
+[Unit]
+Description=Friday Labs env pod -- SensorHub UDP streamer
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+Environment=ENVPOD_HOST=192.168.1.12
+Environment=ENVPOD_PORT=5556
+ExecStart=/usr/bin/python3 /opt/friday/envpod/sensorhub_stream.py
+Restart=always
+RestartSec=3
+User=pi
+[Install]
+WantedBy=multi-user.target

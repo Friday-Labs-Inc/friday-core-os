@@ -1,0 +1,15 @@
+[Unit]
+Description=Friday Labs telemetry agent (Command Center boundary + world-sense egress)
+PartOf=friday-core-os.target
+After=module-registry.service network-online.target
+[Service]
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=ROS_DOMAIN_ID=42
+Environment=ROS_HOME=/var/lib/friday/ros
+Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+ExecStart=/opt/friday/bin/ros2-run friday_telemetry telemetry_agent --ros-args --params-file /etc/friday/telemetry.params.yaml
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=friday-core-os.target

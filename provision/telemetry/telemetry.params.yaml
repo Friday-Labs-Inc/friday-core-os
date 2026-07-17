@@ -1,0 +1,13 @@
+telemetry:
+  ros__parameters:
+    rover_id: MARK1-001
+    mqtt_host: 192.168.1.6
+    mqtt_port: 8883
+    mqtt_tls: true
+    mqtt_ca: /etc/friday/certs/ca.crt
+    mqtt_cert: /etc/friday/certs/rover.crt
+    mqtt_key: /etc/friday/certs/rover.key
+    mqtt_client_id: MARK1-001
+    rover_key_file: /etc/friday/rover_signing.key   # generate on the Pi, register pubkey in Frappe Rover doc
+    operators_file: /etc/friday/operators.json
+    nonce_store: /var/lib/friday/telemetry_nonce.json
